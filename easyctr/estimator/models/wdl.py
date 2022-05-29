@@ -1,6 +1,4 @@
-import os
 from easyctr.estimator.models import BaseModel
-import tensorflow as tf
 from tensorflow.estimator import DNNLinearCombinedClassifier, RunConfig
 
 

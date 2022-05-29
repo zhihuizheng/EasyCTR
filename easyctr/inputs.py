@@ -1,9 +1,6 @@
 import tensorflow as tf
 
 
-# def build
-
-
 def input_fn_tfrecord(filenames, feature_description, label=None, batch_size=256, num_epochs=1, num_parallel_calls=8,
                       shuffle_factor=10, prefetch_factor=1):
     def _parse_examples(serial_exmp):
