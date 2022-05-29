@@ -1,0 +1,296 @@
+import os
+
+from tensorflow import FixedLenFeature
+
+os.chdir(os.path.dirname(os.path.realpath(__file__)))
+import sys
+import argparse
+import logging
+import os
+import shutil
+import numpy as np
+from easyctr import datasets
+from easyctr.utils import load_config, set_logger, print_to_json
+from easyctr.features import FeatureMap, FeatureEncoder
+from easyctr.estimator import models
+
+import tensorflow as tf
+from tensorflow.estimator import DNNLinearCombinedClassifier, RunConfig
+
+
+# # input_fn，这函数为模型train提供训练数据
+# # estimator.train方法接受的训练数据有两种形式：一种是dataset类型的数据，另一种是tensor类的数据
+# # tensor类型的数据，各种特征的变换需要自己实现，很麻烦。
+# def input_fn(features, labels, training=True, batch_size=256, num_epochs=5):
+#     ds = tf.data.Dataset.from_tensor_slices((dict(features), labels))
+#     # 如果在训练模式下混淆并重复数据。
+#     if training:
+#         ds = ds.shuffle(10000)
+#     ds = ds.batch(batch_size).repeat(num_epochs)
+#     return ds
+
+
+# TODO: 还有其他方式读数据吗，这种方式这段代码不够灵活和自适应
+LABEL_COLUMN = 'label'
+C_COLUMNS = ['I' + str(i) for i in range(1, 14)]
+D_COLUMNS = ['C' + str(i) for i in range(1, 27)]
+CSV_COLUMNS = [LABEL_COLUMN] + C_COLUMNS + D_COLUMNS
+# Columns Defaults
+CSV_COLUMN_DEFAULTS = [[0.0]]
+C_COLUMN_DEFAULTS = [[0.0] for i in range(13)]
+D_COLUMN_DEFAULTS = [[0] for i in range(26)]
+CSV_COLUMN_DEFAULTS = CSV_COLUMN_DEFAULTS + C_COLUMN_DEFAULTS + D_COLUMN_DEFAULTS
+
+
+# tf.data.Iterator
+
+
+# # 按行解码 CSV 文件.
+# # 读入一行数据，对于每列如果有数据就用原值，如果没数据就用缺省值;
+# # 返回字典格式的键值对
+# def csv_decoder(line):
+#     parsed = tf.decode_csv(line, list(CSV_COLUMN_DEFAULTS))
+#     return dict(zip(CSV_COLUMNS, parsed))
+#
+#
+# # 过滤器，滤掉空行，该函数后面要用
+# def filter_empty_lines(line):
+#     return tf.not_equal(tf.size(tf.string_split([line], ',').values), 0)
+#
+#
+# # 创建训练的input_fn
+# def create_train_input_fn(path, params):
+#     def input_fn():
+#         # dataset = (
+#         #     tf.data.TextLineDataset(path).skip(1)  # 从文件创建数据集
+#         #         .filter(filter_empty_lines)        # 滤掉空行
+#         #         .map(csv_decoder)                  # 解析每行
+#         #         # .map(lambda string: tf.string_split([string], delimiter=',').values)
+#         #         .shuffle(buffer_size=1000)         # 每1000行打乱顺序
+#         #         .repeat(params['epochs'])
+#         #         .batch(params['batch_size']))
+#         dataset = tf.data.TFRecordDataset(path, )
+#
+#         features = dataset.make_one_shot_iterator().get_next()
+#         labels = features.pop(params['label_col']['name'])
+#         return features, labels
+#
+#     return input_fn
+#
+#
+# def create_test_input_fn(path, params):
+#     def input_fn():
+#         dataset = (
+#             tf.data.TextLineDataset(path).skip(1)
+#                 .filter(filter_empty_lines)
+#                 .map(csv_decoder)
+#                 .batch(params['batch_size']))
+#
+#         features = dataset.make_one_shot_iterator().get_next()
+#         labels = features.pop(params['label_col']['name'])
+#         return features, labels
+#
+#     return input_fn
+
+
+def input_fn_tfrecord(filenames, feature_description, label=None, batch_size=256, num_epochs=1, num_parallel_calls=8,
+                      shuffle_factor=10, prefetch_factor=1,
+                      ):
+    def _parse_examples(serial_exmp):
+        try:
+            features = tf.parse_single_example(serial_exmp, features=feature_description)
+        except AttributeError:
+            features = tf.io.parse_single_example(serial_exmp, features=feature_description)
+        if label is not None:
+            labels = features.pop(label)
+            return features, labels
+        return features
+
+    def input_fn():
+        dataset = tf.data.TFRecordDataset(filenames)
+        dataset = dataset.map(_parse_examples, num_parallel_calls=num_parallel_calls)
+        if shuffle_factor > 0:
+            dataset = dataset.shuffle(buffer_size=batch_size * shuffle_factor)
+
+        dataset = dataset.repeat(num_epochs).batch(batch_size)
+
+        if prefetch_factor > 0:
+            dataset = dataset.prefetch(buffer_size=batch_size * prefetch_factor)
+        try:
+            iterator = dataset.make_one_shot_iterator()
+        except AttributeError:
+            iterator = tf.compat.v1.data.make_one_shot_iterator(dataset)
+
+        return iterator.get_next()
+
+    return input_fn
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=str, default='./config/fm_criteo.yaml', help='The config file.')
+
+    args = vars(parser.parse_args())
+    params = load_config(args['config'])
+    set_logger(params)
+    logging.info(print_to_json(params))
+
+    # preporcess the datasets
+    dataset = params['dataset_id'].split('_')[0].lower()
+    data_dir = os.path.join(params['data_root'], params['dataset_id'])
+    if params.get("data_format") == 'h5':  # load data from h5
+        feature_map = FeatureMap(params['dataset_id'], data_dir)
+        json_file = os.path.join(os.path.join(params['data_root'], params['dataset_id']), "feature_map.json")
+        if os.path.exists(json_file):
+            feature_map.load(json_file)
+        else:
+            raise RuntimeError('feature_map not exist!')
+        pass
+    else:  # load data from csv
+        try:
+            feature_encoder = getattr(datasets, dataset).FeatureEncoder(**params)
+        except:
+            feature_encoder = FeatureEncoder(**params)
+        if os.path.exists(feature_encoder.json_file):
+            feature_encoder.feature_map.load(feature_encoder.json_file)
+        else:  # Build feature_map and transform h5 data
+            datasets.build_dataset(feature_encoder, **params)
+        params["train_data"] = os.path.join(data_dir, 'train.tfrecords')
+        params["valid_data"] = os.path.join(data_dir, 'valid.tfrecords')
+        params["test_data"] = os.path.join(data_dir, 'test.tfrecords')
+        feature_map = feature_encoder.feature_map
+
+    # # initialize model
+    # model_class = getattr(models, params['model'])
+    # model = model_class(feature_map, **params)
+
+    # TODO: columns 抽一个公共函数出来，然后把放在model初始化里面，这样才能重新启用上面的方法构建模型
+    numeric_columns = []
+    categorical_columns = []
+    categorical_columns_dict = {} # 每个离散特征对应的字典集合
+    for feature, feature_spec in feature_map.feature_specs.items():
+        if feature_spec['type'] == 'numeric':
+            numeric_columns.append(feature)
+        elif feature_spec['type'] == 'categorical':
+            categorical_columns.append(feature)
+            categorical_columns_dict[feature] = list(range(feature_spec['vocab_size'])) #这样处理的原因是，这个数据集的离散特征已经处理成id了
+        else:
+            raise Exception("feature type {} not support!", feature_spec['type'])
+
+    tf_feature_columns = []
+
+    # for numeric
+    for col in numeric_columns:
+        numeric_col = tf.feature_column.numeric_column(col)
+        tf_feature_columns.append(numeric_col)
+
+    # 对离散特征做embedding后喂给模型
+    for col in categorical_columns:
+        cate_col = tf.feature_column.embedding_column(
+            tf.feature_column.categorical_column_with_vocabulary_list(
+                col, categorical_columns_dict[col]
+            )
+            , params['embedding_dim'])
+        tf_feature_columns.append(cate_col)
+
+    # remove checkpoints
+    model_dir = os.path.join(params['model_root'], params['dataset_id'])
+    shutil.rmtree(model_dir)
+
+    # run time config
+    run_config = RunConfig(save_summary_steps=100,
+                           save_checkpoints_steps=100,
+                           keep_checkpoint_max=2)
+
+    estimator_wd_v2 = models.WDLEstimator(tf_feature_columns, tf_feature_columns, dnn_hidden_unit=(64, 32),
+                                          config=None, dnn_optimizer='Adam', **params)
+
+    print(type(estimator_wd_v2))
+
+    # training
+    # TODO:
+    #  边训练边评估
+    #  打印训练进度
+    #  训练比较慢，是卡在读数据还是参数更新
+    #  原来pytorch训练也挺慢的，但是电脑没有说声音很大
+    # estimator_wd_v2.train(input_fn=create_train_input_fn(params['train_data'], params))
+    #
+    # train_result_wd_v2 = estimator_wd_v2.evaluate(input_fn=create_test_input_fn(params['train_data'], params))
+    # print(train_result_wd_v2)
+    #
+    # eval_result_wd_v2 = estimator_wd_v2.evaluate(input_fn=create_test_input_fn(params['valid_data'], params))
+    # print(eval_result_wd_v2)
+
+
+
+    # class EvaluateFullHook(tf.estimator.SessionRunHook):
+    #
+    #     def __init__(self, estimator, input_fn, params, eval_dir=None) -> None:
+    #         self.estimator = estimator
+    #         self.input_fn = input_fn
+    #         self.params = params
+    #         self.eval_dir = eval_dir
+    #
+    #     def begin(self):
+    #         tf.compat.v1.logging.info("Starting Full Evaluation")
+    #         evaluate_from_estimator(self.estimator, self.input_fn, self.params, self.eval_dir)
+    #         tf.compat.v1.logging.info("Finished Full Evaluation")
+    #
+    # full_eval_hook = EvaluateFullHook(estimator=estimator_wd_v2, input_fn=lambda: create_test_input_fn(params['valid_data'], params))
+
+    feature_description = {k: FixedLenFeature(dtype=tf.int64, shape=1) for k in categorical_columns}
+    feature_description.update(
+        {k: FixedLenFeature(dtype=tf.float32, shape=1) for k in numeric_columns})
+    feature_description['label'] = FixedLenFeature(dtype=tf.float32, shape=1)
+
+    train_model_input = input_fn_tfrecord(params['train_data'], feature_description, 'label', batch_size=128,
+                                          num_epochs=2, shuffle_factor=10)
+    test_model_input = input_fn_tfrecord(params['valid_data'], feature_description, 'label',
+                                         batch_size=2 ** 14, num_epochs=1, shuffle_factor=0)
+    train_spec = tf.estimator.TrainSpec(input_fn=train_model_input)
+    eval_spec = tf.estimator.EvalSpec(input_fn=test_model_input)
+
+
+    # train_spec = tf.estimator.TrainSpec(input_fn=create_train_input_fn(params['train_data'], params))
+    # eval_spec = tf.estimator.EvalSpec(input_fn=create_test_input_fn(params['valid_data'], params),
+    #                                   steps=None,
+    #                                   start_delay_secs=10,
+    #                                   throttle_secs=10)
+    tf.estimator.train_and_evaluate(estimator_wd_v2, train_spec, eval_spec)
+    # for i in range(3):
+    #     print("#######", i)
+    #     tf.estimator.train_and_evaluate(estimator_wd_v2, train_spec, eval_spec)
+
+
+
+
+    # # get train and validation data
+    # train_gen, valid_gen = datasets.h5_generator(feature_map, stage='train', **params)
+    # train_gen
+
+
+    # split_point = int(600000 * 0.8)
+    # df_train = df[0:split_point]
+    # df_test = df[split_point:]
+    #
+    # # train
+    # train_labels = df_train['label'].to_numpy()
+    # train_features = df_train.drop(['label'], axis=1)
+    #
+    # # test
+    # test_labels = df_test['label'].to_numpy()
+    # test_features = df_test.drop(['label'], axis=1)
+
+    # 注意，调用train方法的时候，我们需要把训练数据送给模型
+    # input_fn参数接受一个函数作为输入，我们需要在这个函数里把数据喂给模型。
+    # 这里就用到了我们刚开始定义的input_fn函数了，该函数返回一个tf.dataset实例，可以作为estimator的输入
+    # 比较奇葩的方式！
+    # https://tensorflow.google.cn/versions/r2.0/api_docs/python/tf/estimator/DNNLinearCombinedClassifier#train
+    # estimator_wd_v2.train(input_fn=lambda: input_fn(train_features, train_labels, training=True, num_epochs=1),
+    #                       steps=None)
+    #
+    # train_result_wd_v2 = estimator_wd_v2.evaluate(
+    #     input_fn=lambda: input_fn(train_features, train_labels, training=False))
+    # print(train_result_wd_v2)
+    # eval_result_wd_v2 = estimator_wd_v2.evaluate(input_fn=lambda: input_fn(test_features, test_labels, training=False))
+    # print(eval_result_wd_v2)
