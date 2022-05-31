@@ -2,19 +2,6 @@ from easyctr.estimator.models import BaseModel
 from tensorflow.estimator import DNNLinearCombinedClassifier, RunConfig
 
 
-# def WDLEstimator(linear_feature_columns, dnn_feature_columns, dnn_hidden_unit=(128, 64),
-#                  config=None, **kwargs):
-#     def
-#
-#     model_dir = os.path.join(kwargs['model_root'], kwargs['dataset_id'])
-#     return DNNLinearCombinedClassifier(linear_feature_columns=linear_feature_columns,
-#                                        dnn_feature_columns=dnn_feature_columns,
-#                                        model_dir=model_dir,
-#                                        dnn_hidden_units=dnn_hidden_unit,
-#                                        config=config,
-#                                        dnn_optimizer=kwargs['dnn_optimizer'])
-
-
 class WDLEstimator(BaseModel):
     def __init__(self, feature_encoder, **kwargs):
         self.dnn_hidden_units = kwargs['dnn_hidden_units']

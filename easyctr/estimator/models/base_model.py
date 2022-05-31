@@ -7,6 +7,7 @@ import tensorflow as tf
 class BaseModel(object):
     def __init__(self, feature_encoder, **kwargs):
         self.feature_encoder = feature_encoder
+        self.seed = kwargs['seed']
         self.batch_size = kwargs['batch_size']
         self.epochs = kwargs['epochs']
         self.embedding_dim = kwargs['embedding_dim']
@@ -18,7 +19,7 @@ class BaseModel(object):
         self._init_graph()
 
     def _init_graph(self):
-        self.numeric_columns, self.categorical_columns, self.label_column = self.feature_encoder.get_column_names()
+        self.numeric_columns, self.categorical_columns, self.label_column = self.feature_encoder.get_column_names() #TODO
         self._build_feature_columns()
         self._build_input()
         self._build_model()
@@ -33,9 +34,9 @@ class BaseModel(object):
         # 离散特征做embedding
         for col in self.categorical_columns:
             cate_col = tf.feature_column.embedding_column(
-                tf.feature_column.categorical_column_with_vocabulary_list(
-                    col, list(range(self.feature_encoder.feature_map.feature_specs[col]["vocab_size"])) #已经编码为从0开始的连续正整数
-                ), self.embedding_dim)
+                tf.feature_column.categorical_column_with_identity(
+                    col, self.feature_encoder.feature_map.feature_specs[col]["vocab_size"] + 1), #已经编码为从0开始的连续正整数
+                self.embedding_dim)
             categorical_feature_columns.append(cate_col)
         self.numeric_feature_columns, self.categorical_feature_columns = numeric_feature_columns, categorical_feature_columns
 
