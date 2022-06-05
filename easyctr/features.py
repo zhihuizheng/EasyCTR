@@ -7,7 +7,6 @@ import os
 import logging
 import json
 from .preprocess import Tokenizer, Normalizer, LabelEncoderExt
-import tensorflow as tf
 
 
 class FeatureMap(object):
@@ -23,13 +22,15 @@ class FeatureMap(object):
         logging.info("Set feature index...")
         idx = 0
         for feature, feature_spec in self.feature_specs.items():
-            if feature_spec["type"] != "sequence":
-                self.feature_specs[feature]["index"] = idx
-                idx += 1
-            else:
-                seq_indexes = [i + idx for i in range(feature_spec["max_len"])]
-                self.feature_specs[feature]["index"] = seq_indexes
-                idx += feature_spec["max_len"]
+            # if feature_spec["type"] != "sequence":
+            #     self.feature_specs[feature]["index"] = idx
+            #     idx += 1
+            # else:
+            #     seq_indexes = [i + idx for i in range(feature_spec["max_len"])]
+            #     self.feature_specs[feature]["index"] = seq_indexes
+            #     idx += feature_spec["max_len"]
+            self.feature_specs[feature]["index"] = idx
+            idx += 1
         self.input_length = idx
 
     # def get_feature_index(self, feature_type=None):
@@ -126,11 +127,6 @@ class FeatureEncoder(object):
         else:
             raise RuntimeError("Feature column={} requires to assign na_value!".format(col["name"]))
 
-    # def fit_transform(self, ddf, min_categr_count=1, num_buckets=10, **kwargs):
-    #     self.fit(ddf, min_categr_count=min_categr_count, num_buckets=num_buckets, **kwargs)
-    #     data_array = self.transform(ddf)
-    #     return data_array
-
     def fit(self, ddf, min_categr_count=1, num_buckets=10, **kwargs):           
         logging.info("Fit feature encoder...")
         self.feature_map.num_fields = 0
@@ -175,6 +171,8 @@ class FeatureEncoder(object):
                 self.encoders[name + "_labelencoder"] = labelencoder
                 self.feature_map.num_features += len(labelencoder.classes_)
                 self.feature_map.feature_specs[name]["vocab_size"] = len(labelencoder.classes_)
+        elif feature_type == "sequence":
+            pass # 啥也不需要做
         else:
             raise NotImplementedError("feature_col={}".format(feature_column))
         
@@ -276,8 +274,23 @@ class FeatureEncoder(object):
     #         raise NotImplementedError("feature_col={}".format(feature_column))
 
     def transform(self, ddf):
+        # TODO: 放到另外的模块，并且读入参数max_seq_len
+        # def padding(nums, max_seq_len=10):
+        #     if len(nums) < max_seq_len:
+        #         nums = nums + [0] * (max_seq_len - len(nums))
+        #     return nums
+        def padding(array, elm='Unknown', max_seq_len=10):
+            # 在前面pad，这样就算不屏蔽0也可以
+            if len(array) < max_seq_len:
+                array = [elm] * (max_seq_len - len(array)) + array
+            else:
+                array = array[-max_seq_len:]
+            return array
+
+        def concat(nums, sep='-'):
+            return sep.join(map(str, nums))
+
         logging.info("Transform feature columns...")
-        data_arrays = []
         for feature, feature_spec in self.feature_map.feature_specs.items():
             feature_type = feature_spec["type"]
             if feature_type == "numeric":
@@ -285,60 +298,20 @@ class FeatureEncoder(object):
                 normalizer = self.encoders.get(feature + "_normalizer")
                 if normalizer:
                     numeric_array = normalizer.normalize(numeric_array)
-                # data_arrays.append(numeric_array)
                 ddf.loc[:, feature] = numeric_array
             elif feature_type == "categorical":
-                encoder = feature_spec.get("encoder", "")
-                if encoder == "":
-                    # data_arrays.append(self.encoders.get(feature + "_tokenizer") \
-                    #                                 .encode_category(ddf.loc[:, feature].values))
-                    ddf.loc[:, feature] = self.encoders.get(feature + "_labelencoder").transform(ddf.loc[:, feature].values)
+                encoder = self.encoders.get(feature + "_labelencoder")
+                if encoder:
+                    ddf.loc[:, feature] = encoder.transform(ddf.loc[:, feature].values)
+            elif feature_type == "sequence":
+                encoder = self.encoders.get(feature.lstrip("hist_") + "_labelencoder")
+                if encoder:
+                    # 每一行是一个字符串，而且分割后的长度也不一样
+                    ddf.loc[:, feature] = [concat(encoder.transform(padding(value.split('-')))) for value in ddf.loc[:, feature].values]
         label_name = self.label_col["name"]
         if ddf[label_name].dtype != np.float64:
             ddf.loc[:, label_name] = ddf.loc[:, label_name].apply(lambda x: float(x))
-        # data_arrays.append(ddf.loc[:, label_name].values) # add the label column at last
-        # data_arrays = [item.reshape(-1, 1) if item.ndim == 1 else item for item in data_arrays]
-        # data_array = np.hstack(data_arrays)
-        # return data_array
         return ddf
-
-
-    # def transform(self, ddf):
-    #     logging.info("Transform feature columns...")
-    #     data_arrays = []
-    #     for feature, feature_spec in self.feature_map.feature_specs.items():
-    #         feature_type = feature_spec["type"]
-    #         if feature_type == "numeric":
-    #             numeric_array = ddf.loc[:, feature].fillna(0).apply(lambda x: float(x)).values
-    #             normalizer = self.encoders.get(feature + "_normalizer")
-    #             if normalizer:
-    #                 numeric_array = normalizer.normalize(numeric_array)
-    #             data_arrays.append(numeric_array)
-    #         elif feature_type == "categorical":
-    #             encoder = feature_spec.get("encoder", "")
-    #             if encoder == "":
-    #                 data_arrays.append(self.encoders.get(feature + "_tokenizer") \
-    #                                                 .encode_category(ddf.loc[:, feature].values))
-    #             elif encoder == "numeric_bucket":
-    #                 raise NotImplementedError
-    #             elif encoder == "hash_bucket":
-    #                 raise NotImplementedError
-    #         elif feature_type == "sequence":
-    #             data_arrays.append(self.encoders.get(feature + "_tokenizer") \
-    #                                             .encode_sequence(ddf.loc[:, feature].values))
-    #     label_name = self.label_col["name"]
-    #     if ddf[label_name].dtype != np.float64:
-    #         ddf.loc[:, label_name] = ddf.loc[:, label_name].apply(lambda x: float(x))
-    #     data_arrays.append(ddf.loc[:, label_name].values) # add the label column at last
-    #     data_arrays = [item.reshape(-1, 1) if item.ndim == 1 else item for item in data_arrays]
-    #     data_array = np.hstack(data_arrays)
-    #     return data_array
-
-    def is_share_embedding_with_sequence(self, feature):
-        for col in self.feature_cols:
-            if col.get("share_embedding", None) == feature and col["type"] == "sequence":
-                return True
-        return False
 
     def load_pickle(self, pickle_file=None):
         """ Load feature encoder from cache """
@@ -360,34 +333,29 @@ class FeatureEncoder(object):
     def load_json(self, json_file):
         self.feature_map.load(json_file)
 
-    def get_column_names(self):
+    def get_feature_name_dict(self):
         numeric_feature_names = []
         categorical_feature_names = []
+        sequence_feature_names = []
         label_name = self.label_col['name']
         for feature, feature_spec in self.feature_map.feature_specs.items():
             if feature_spec['type'] == 'numeric':
                 numeric_feature_names.append(feature)
             elif feature_spec['type'] == 'categorical':
                 categorical_feature_names.append(feature)
-        return numeric_feature_names, categorical_feature_names, label_name
+            elif feature_spec['type'] == 'sequence':
+                sequence_feature_names.append(feature)
+        return {
+            'numeric_feature_names': numeric_feature_names,
+            'categorical_feature_names': categorical_feature_names,
+            'sequence_feature_names': sequence_feature_names,
+            'label_name': label_name
+        }
 
-    # def build_feature_columns(self, embedding_dim):
-    #     numeric_columns, categorical_columns, _ = self.get_column_names()
-    #
-    #     numeric_feature_columns = []
-    #     categorical_feature_columns = []
-    #     # for numeric
-    #     for col in numeric_columns:
-    #         numeric_col = tf.feature_column.numeric_column(col)
-    #         numeric_feature_columns.append(numeric_col)
-    #
-    #     # 对离散特征做embedding后喂给模型
-    #     for col in categorical_columns:
-    #         cate_col = tf.feature_column.embedding_column(
-    #             tf.feature_column.categorical_column_with_vocabulary_list(
-    #                 col, list(range(self.feature_map.feature_specs[col]["vocab_size"])) #已经编码为从0开始的连续正整数
-    #             )
-    #             , embedding_dim)
-    #         categorical_feature_columns.append(cate_col)
-    #
-    #     return numeric_feature_columns, categorical_feature_columns
+    def get_vocab_size(self, feature_name):
+        feature_spec = self.feature_map.feature_specs.get(feature_name, None)
+        if not feature_spec:
+            raise RuntimeError("unknown feature name={}!".format(feature_name))
+        if feature_spec["type"] != "categorical":
+            raise RuntimeError("feature type={} does not have vocab size!".format(feature_spec["type"]))
+        return feature_spec["vocab_size"]

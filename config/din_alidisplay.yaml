@@ -1,0 +1,48 @@
+data:
+    data_root: ./data/
+    data_format: csv
+    train_data: ./data/alidisplay_x1/sampled_din.csv
+    valid_data: ./data/alidisplay_x1/sampled_din.csv
+    test_data: ./data/alidisplay_x1/sampled_din.csv
+    min_categr_count: 2
+    feature_cols:
+        - { name: [ price ],
+            active: True, dtype: float, type: numeric, preprocess: convert_to_bucket, na_value: 0 }
+        - { name: [ userid, adgroup_id, pid, cms_segid, cms_group_id, final_gender_code, age_level, pvalue_level, shopping_level, occupation, new_user_class_level, campaign_id, customer, cate_id, brand ],
+            active: True, dtype: str, type: categorical, na_value: "" }
+        - { name: [ hist_cate_id, hist_brand ],
+            active: True, dtype: str, type: sequence, na_value: "" } #序列特征通过在前面加hist_前缀来标识
+    label_col: { name: clk, dtype: float }
+
+model:
+    model_root: './checkpoints/'
+    log_root: './logs/'
+    dataset_id: alidisplay_x1 #数据集名称内部不能有下划线
+    workers: 8
+    verbose: 1
+    patience: 2
+    pickle_feature_encoder: True
+    debug: False
+    model: DINEstimator
+    #loss: 'binary_crossentropy'
+    metrics: ['logloss', 'AUC']
+    task: binary
+    linear_optimizer: Ftrl
+    dnn_optimizer: Adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    l2_reg_embedding: 0.2
+    batch_size: 128
+    embedding_dim: 16
+    dnn_hidden_units: [ 64, 32 ]
+    hidden_activations: relu
+    l2_reg_dnn: 0.2
+    embedding_dropout: 0
+    net_dropout: 0
+    batch_norm: False
+    epochs: 3
+    shuffle: True
+    seed: 2022
+    init_std: 0.01
+    max_seq_len: 10

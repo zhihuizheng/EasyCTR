@@ -16,7 +16,7 @@ class DeepFMEstimator(BaseModel):
 
     def _build_model(self):
 
-        linear_feature_columns = self.numeric_feature_columns #+ self.categorical_feature_columns
+        linear_feature_columns = self.numeric_feature_columns + self.categorical_feature_columns
         dnn_feature_columns = self.numeric_feature_columns + self.categorical_feature_columns
 
         def _model_fn(features, labels, mode, params):
@@ -31,7 +31,7 @@ class DeepFMEstimator(BaseModel):
             net_dropout = params['net_dropout']
             batch_norm = params['batch_norm']
 
-            train_flag = (mode == tf.estimator.ModeKeys.TRAIN)
+            #train_flag = (mode == tf.estimator.ModeKeys.TRAIN)
             linear_logits = get_linear_logit(features, linear_feature_columns)
 
             with tf.variable_scope(DNN_SCOPE_NAME):
@@ -42,7 +42,7 @@ class DeepFMEstimator(BaseModel):
                 fm_logit = FM()(concat_func(sparse_embedding_list, axis=1))
 
                 dnn_output = DNN(dnn_hidden_units, hidden_activations, l2_reg_dnn, net_dropout, batch_norm, seed=seed)(
-                    dnn_input, training=train_flag)
+                    dnn_input)#, training=train_flag)
                 dnn_logit = tf.keras.layers.Dense(
                     1, use_bias=False, kernel_initializer=tf.keras.initializers.glorot_normal(seed=seed))(dnn_output)
 

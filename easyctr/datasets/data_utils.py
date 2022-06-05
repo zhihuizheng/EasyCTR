@@ -5,25 +5,6 @@ import gc
 import glob
 import tensorflow as tf
 
-    
-# def save_hdf5(data_array, data_path, key="data"):
-#     logging.info("Saving data to h5: " + data_path)
-#     if not os.path.exists(os.path.dirname(data_path)):
-#         os.makedirs(os.path.dirname(data_path))
-#     with h5py.File(data_path, 'w') as hf:
-#         hf.create_dataset(key, data=data_array)
-#
-#
-# def load_hdf5(data_path, key=None, verbose=True):
-#     if verbose:
-#         logging.info('Loading data from h5: ' + data_path)
-#     with h5py.File(data_path, 'r') as hf:
-#         if key is not None:
-#             data_array = hf[key][:]
-#         else:
-#             data_array = hf[list(hf.keys())[0]][:]
-#     return data_array
-
 
 def split_train_test(train_ddf=None, valid_ddf=None, test_ddf=None, valid_size=0, 
                      test_size=0, split_type="sequential"):
@@ -51,7 +32,7 @@ def split_train_test(train_ddf=None, valid_ddf=None, test_ddf=None, valid_size=0
 
 def build_dataset(feature_encoder, train_data=None, valid_data=None, test_data=None, valid_size=0, 
                   test_size=0, split_type="sequential", **kwargs):
-    """ Build feature_map and transform h5 data """
+    """ Build feature_map and transform tfrecords data """
     # Load csv data
     train_ddf = feature_encoder.read_csv(train_data)
     valid_ddf = feature_encoder.read_csv(valid_data) if valid_data else None
@@ -66,16 +47,7 @@ def build_dataset(feature_encoder, train_data=None, valid_data=None, test_data=N
     feature_encoder.fit(train_ddf, **kwargs)
     train_ddf = feature_encoder.transform(train_ddf)
 
-    # dense_feature_names = []
-    # sparse_feature_names = []
-    # label_name = kwargs['label_col']['name']
-    # for feature, feature_spec in feature_encoder.feature_map.feature_specs.items():
-    #     if feature_spec['type'] == 'numeric':
-    #         dense_feature_names.append(feature)
-    #     elif feature_spec['type'] == 'categorical':
-    #         sparse_feature_names.append(feature)
-
-    numeric_feature_names, categorical_feature_names, label_name = feature_encoder.get_column_names()
+    feature_name_dict = feature_encoder.get_feature_name_dict()
 
 
     # block_size = int(kwargs.get("data_block_size", 0))
@@ -87,7 +59,7 @@ def build_dataset(feature_encoder, train_data=None, valid_data=None, test_data=N
     # else:
     #     save_hdf5(train_array, os.path.join(feature_encoder.data_dir, 'train.h5'))
     # del train_array, train_ddf
-    write_tfrecord(os.path.join(feature_encoder.data_dir, 'train.tfrecords'), train_ddf, categorical_feature_names, numeric_feature_names, label_name)
+    write_tfrecord(os.path.join(feature_encoder.data_dir, 'train.tfrecords'), train_ddf, feature_name_dict)
     gc.collect()
 
     # Transfrom valid_ddf
@@ -102,8 +74,7 @@ def build_dataset(feature_encoder, train_data=None, valid_data=None, test_data=N
         #         block_id += 1
         # else:
         #     save_hdf5(valid_array, os.path.join(feature_encoder.data_dir, 'valid.h5'))
-        write_tfrecord(os.path.join(feature_encoder.data_dir, 'valid.tfrecords'), valid_ddf, categorical_feature_names,
-                       numeric_feature_names, label_name)
+        write_tfrecord(os.path.join(feature_encoder.data_dir, 'valid.tfrecords'), valid_ddf, feature_name_dict)
         # del valid_array, valid_ddf
         gc.collect()
 
@@ -119,79 +90,31 @@ def build_dataset(feature_encoder, train_data=None, valid_data=None, test_data=N
         #         block_id += 1
         # else:
         #     save_hdf5(test_array, os.path.join(feature_encoder.data_dir, 'test.h5'))
-        write_tfrecord(os.path.join(feature_encoder.data_dir, 'test.tfrecords'), test_ddf, categorical_feature_names,
-                       numeric_feature_names, label_name)
+        write_tfrecord(os.path.join(feature_encoder.data_dir, 'test.tfrecords'), test_ddf, feature_name_dict)
         # del test_array, test_ddf
         gc.collect()
     logging.info("Transform csv data to tfrecords done.")
 
 
-# def h5_generator(feature_map, stage="both", train_data=None, valid_data=None, test_data=None,
-#                  batch_size=32, shuffle=True, **kwargs):
-#     logging.info("Loading data...")
-#     if kwargs.get("data_block_size", 0) > 0:
-#         from ..data_generator import DataBlockGenerator as DataGenerator
-#     else:
-#         from ..data_generator import DataGenerator
-#
-#     train_gen = None
-#     valid_gen = None
-#     test_gen = None
-#     if stage in ["both", "train"]:
-#         train_blocks = glob.glob(train_data)
-#         valid_blocks = glob.glob(valid_data)
-#         assert len(train_blocks) > 0 and len(valid_blocks) > 0, "invalid data files or paths."
-#         if len(train_blocks) > 1:
-#             train_blocks.sort(key=lambda x: int(x.split("_")[-1].split(".")[0]))
-#         if len(valid_blocks) > 1:
-#             valid_blocks.sort(key=lambda x: int(x.split("_")[-1].split(".")[0]))
-#         train_gen = DataGenerator(train_blocks, batch_size=batch_size, shuffle=shuffle, **kwargs)
-#         valid_gen = DataGenerator(valid_blocks, batch_size=batch_size, shuffle=False, **kwargs)
-#         logging.info("Train samples: total/{:d}, pos/{:.0f}, neg/{:.0f}, ratio/{:.2f}%, blocks/{:.0f}" \
-#                      .format(train_gen.num_samples, train_gen.num_positives, train_gen.num_negatives,
-#                              100. * train_gen.num_positives / train_gen.num_samples, train_gen.num_blocks))
-#         logging.info("Validation samples: total/{:d}, pos/{:.0f}, neg/{:.0f}, ratio/{:.2f}%, blocks/{:.0f}" \
-#                      .format(valid_gen.num_samples, valid_gen.num_positives, valid_gen.num_negatives,
-#                              100. * valid_gen.num_positives / valid_gen.num_samples, valid_gen.num_blocks))
-#         if stage == "train":
-#             logging.info("Loading train data done.")
-#             return train_gen, valid_gen
-#
-#     if stage in ["both", "test"]:
-#         test_blocks = glob.glob(test_data)
-#         if len(test_blocks) > 0:
-#             if len(test_blocks) > 1:
-#                 test_blocks.sort(key=lambda x: int(x.split("_")[-1].split(".")[0]))
-#             test_gen = DataGenerator(test_blocks, batch_size=batch_size, shuffle=False, **kwargs)
-#             logging.info("Test samples: total/{:d}, pos/{:.0f}, neg/{:.0f}, ratio/{:.2f}%, blocks/{:.0f}" \
-#                          .format(test_gen.num_samples, test_gen.num_positives, test_gen.num_negatives,
-#                                  100. * test_gen.num_positives / test_gen.num_samples, test_gen.num_blocks))
-#         if stage == "test":
-#             logging.info("Loading test data done.")
-#             return test_gen
-#
-#     logging.info("Loading data done.")
-#     return train_gen, valid_gen, test_gen
-
-
-def make_example(line, categorical_feature_name, numeric_feature_name, label_name):
-    features = {feat: tf.train.Feature(int64_list=tf.train.Int64List(value=[int(line[1][feat])])) for feat in
-                categorical_feature_name}
+def make_example(line, feature_name_dict):
+    features = {}
     features.update(
-        {feat: tf.train.Feature(float_list=tf.train.FloatList(value=[line[1][feat]])) for feat in numeric_feature_name})
-    features[label_name] = tf.train.Feature(float_list=tf.train.FloatList(value=[line[1][label_name]]))
+        {feat: tf.train.Feature(float_list=tf.train.FloatList(value=[line[1][feat]])) for feat in
+         feature_name_dict['numeric_feature_names']})
+    features.update(
+        {feat: tf.train.Feature(int64_list=tf.train.Int64List(value=[int(line[1][feat])])) for feat in
+         feature_name_dict['categorical_feature_names']})
+    features.update(
+        {feat: tf.train.Feature(int64_list=tf.train.Int64List(value=map(int, line[1][feat].split(',')))) for feat in #TODO: 加一个sequence特征的encode和decode
+         feature_name_dict['sequence_feature_names']})
+    features[feature_name_dict['label_name']] = tf.train.Feature(
+        float_list=tf.train.FloatList(value=[line[1][feature_name_dict['label_name']]]))
     return tf.train.Example(features=tf.train.Features(feature=features))
 
 
-def write_tfrecord(filename, df, categorical_feature_names, numeric_feature_names, label_name):
+def write_tfrecord(filename, df, feature_name_dict):
     writer = tf.python_io.TFRecordWriter(filename)
     for line in df.iterrows():
-        ex = make_example(line, categorical_feature_names, numeric_feature_names, label_name)
+        ex = make_example(line, feature_name_dict)
         writer.write(ex.SerializeToString())
     writer.close()
-
-
-def tfrecord_generator():
-    raise NotImplementedError()
-
-
