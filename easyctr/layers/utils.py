@@ -106,3 +106,26 @@ def combined_dnn_input(sparse_embedding_list, dense_value_list):
     else:
         raise NotImplementedError("dnn_feature_columns can not be empty list")
 
+
+class Add(tf.keras.layers.Layer):
+    def __init__(self, **kwargs):
+        super(Add, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        # Be sure to call this somewhere!
+        super(Add, self).build(input_shape)
+
+    def call(self, inputs, **kwargs):
+        if not isinstance(inputs, list):
+            return inputs
+        if len(inputs) == 1:
+            return inputs[0]
+        if len(inputs) == 0:
+            return tf.constant([[0.0]])
+
+        return tf.keras.layers.add(inputs)
+
+
+def add_func(inputs):
+    return Add()(inputs)
+

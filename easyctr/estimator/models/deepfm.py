@@ -3,7 +3,7 @@ import tensorflow as tf
 from tensorflow.estimator import RunConfig
 
 from ..feature_column import get_linear_logit, input_from_feature_columns
-from ..utils import deepctr_model_fn, DNN_SCOPE_NAME, variable_scope
+from ..utils import deepctr_model_fn, LINEAR_SCOPE_NAME, DNN_SCOPE_NAME
 from ...layers.core import DNN
 from ...layers.interaction import FM
 from ...layers.utils import concat_func, combined_dnn_input
@@ -31,8 +31,9 @@ class DeepFMEstimator(BaseModel):
             net_dropout = params['net_dropout']
             batch_norm = params['batch_norm']
 
-            #train_flag = (mode == tf.estimator.ModeKeys.TRAIN)
-            linear_logits = get_linear_logit(features, linear_feature_columns)
+            train_flag = (mode == tf.estimator.ModeKeys.TRAIN)
+            with tf.variable_scope(LINEAR_SCOPE_NAME):
+                linear_logits = get_linear_logit(features, linear_feature_columns)
 
             with tf.variable_scope(DNN_SCOPE_NAME):
                 sparse_embedding_list, dense_value_list = input_from_feature_columns(features, dnn_feature_columns,
@@ -42,7 +43,7 @@ class DeepFMEstimator(BaseModel):
                 fm_logit = FM()(concat_func(sparse_embedding_list, axis=1))
 
                 dnn_output = DNN(dnn_hidden_units, hidden_activations, l2_reg_dnn, net_dropout, batch_norm, seed=seed)(
-                    dnn_input)#, training=train_flag)
+                    dnn_input, training=train_flag)
                 dnn_logit = tf.keras.layers.Dense(
                     1, use_bias=False, kernel_initializer=tf.keras.initializers.glorot_normal(seed=seed))(dnn_output)
 
