@@ -42,7 +42,6 @@ class ESMMEstimator(BaseModel):
                 cvr_preds = tf.sigmoid(cvr_logits)
                 ctcvr_preds = tf.multiply(ctr_preds, cvr_preds)
 
-                optimizer = tf.train.AdamOptimizer(learning_rate=params['learning_rate'])
                 ctr_label = labels[params['esmm']['ctr_tower']['label_name']]  # labels['ctr_label']
                 cvr_label = labels[params['esmm']['cvr_tower']['label_name']]  # labels['cvr_label']
 
@@ -63,10 +62,13 @@ class ESMMEstimator(BaseModel):
                 return tf.estimator.EstimatorSpec(mode, predictions=predictions, export_outputs=export_outputs)
 
             else:
-                ctr_loss = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=ctr_label, logits=ctr_logits))
+                ctr_loss = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=ctr_label, logits=ctr_logits)) #替换成get_loss这样的泛函数
                 ctcvr_loss = tf.reduce_sum(tf.losses.log_loss(labels=cvr_label, predictions=ctcvr_preds))
                 loss = ctr_loss + ctcvr_loss  # loss这儿可以加一个参数，参考multi-task损失的方法
+
+                optimizer = tf.train.AdamOptimizer(learning_rate=params['learning_rate'])
                 train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
+
                 eval_metric_ops = {}
                 eval_metric_ops.update(_eval_metric_ops(ctr_label, ctr_preds, ctr_loss, task=task, name='ctr'))
                 eval_metric_ops.update(_eval_metric_ops(cvr_label, ctcvr_preds, ctcvr_loss, task=task, name='ctcvr'))
