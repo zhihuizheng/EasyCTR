@@ -10,6 +10,47 @@ def _summary_key(head_name, val):
     return '%s/%s' % (val, head_name) if head_name else val
 
 
+def _eval_metric_ops(labels,
+                     predictions,
+                     unweighted_loss,
+                     task='binary',
+                     name='',
+                     weights=None):
+
+    labels = to_float(labels)
+    predictions = to_float(predictions)
+
+    metrics = get_metrics()
+    losses = get_losses()
+
+    metric_ops = {
+        _summary_key(name, "prediction/mean"): metrics.mean(predictions, weights=weights),
+        _summary_key(name, "label/mean"): metrics.mean(labels, weights=weights),
+    }
+
+    summary_scalar("prediction/mean", metric_ops[_summary_key(name, "prediction/mean")][1])
+    summary_scalar("label/mean", metric_ops[_summary_key(name, "label/mean")][1])
+
+    mean_loss = losses.compute_weighted_loss(
+        unweighted_loss, weights=1.0, reduction=losses.Reduction.MEAN)
+
+    if task == "binary":
+        metric_ops[_summary_key(name, "LogLoss")] = metrics.mean(mean_loss, weights=weights, )
+        summary_scalar("LogLoss", mean_loss)
+
+        metric_ops[_summary_key(name, "AUC")] = metrics.auc(labels, predictions, weights=weights)
+        summary_scalar("AUC", metric_ops[_summary_key(name, "AUC")][1])
+    else:
+
+        metric_ops[_summary_key(name, "MSE")] = metrics.mean_squared_error(labels, predictions, weights=weights)
+        summary_scalar("MSE", mean_loss)
+
+        metric_ops[_summary_key(name, "MAE")] = metrics.mean_absolute_error(labels, predictions, weights=weights)
+        summary_scalar("MAE", metric_ops[_summary_key(name, "MAE")][1])
+
+    return metric_ops
+
+
 class Head(_Head):
 
     def __init__(self, task, name=None):
@@ -24,51 +65,6 @@ class Head(_Head):
     def logits_dimension(self):
         return 1
 
-    def _eval_metric_ops(self,
-                         labels,
-                         logits,
-                         predictions,
-                         unweighted_loss,
-                         weights=None):
-
-        labels = to_float(labels)
-        predictions = to_float(predictions)
-
-        # with name_scope(None, 'metrics', (labels, logits, predictions,
-        # unweighted_loss, weights)):
-        metrics = get_metrics()
-        losses = get_losses()
-
-        metric_ops = {
-            _summary_key(self._name, "prediction/mean"): metrics.mean(predictions, weights=weights),
-            _summary_key(self._name, "label/mean"): metrics.mean(labels, weights=weights),
-        }
-
-        summary_scalar("prediction/mean", metric_ops[_summary_key(self._name, "prediction/mean")][1])
-        summary_scalar("label/mean", metric_ops[_summary_key(self._name, "label/mean")][1])
-
-
-        mean_loss = losses.compute_weighted_loss(
-            unweighted_loss, weights=1.0, reduction=losses.Reduction.MEAN)
-
-        if self._task == "binary":
-            metric_ops[_summary_key(self._name, "LogLoss")] = metrics.mean(mean_loss, weights=weights, )
-            summary_scalar("LogLoss", mean_loss)
-
-            metric_ops[_summary_key(self._name, "AUC")] = metrics.auc(labels, predictions, weights=weights)
-            summary_scalar("AUC", metric_ops[_summary_key(self._name, "AUC")][1])
-        else:
-
-            metric_ops[_summary_key(self._name, "MSE")] = metrics.mean_squared_error(labels, predictions,
-                                                                                     weights=weights)
-            summary_scalar("MSE", mean_loss)
-
-            metric_ops[_summary_key(self._name, "MAE")] = metrics.mean_absolute_error(labels, predictions,
-                                                                                      weights=weights)
-            summary_scalar("MAE", metric_ops[_summary_key(self._name, "MAE")][1])
-
-        return metric_ops
-
     def create_loss(self, features, mode, logits, labels):
         del mode, features  # Unused for this head.
         losses = get_losses()
@@ -78,9 +74,14 @@ class Head(_Head):
             loss = losses.mean_squared_error(labels, logits, reduction=losses.Reduction.NONE)
         return loss
 
-    def create_estimator_spec(
-            self, features, mode, logits, labels=None, train_op_fn=None, training_chief_hooks=None):
-        # with name_scope('head'):
+    def create_estimator_spec(self,
+                              features,
+                              mode,
+                              logits,
+                              labels=None,
+                              train_op_fn=None,
+                              eval_metric_ops=None,
+                              training_chief_hooks=None):
         logits = tf.reshape(logits, [-1, 1])
         if self._task == 'binary':
             pred = tf.sigmoid(logits)
@@ -100,13 +101,13 @@ class Head(_Head):
         unweighted_loss = self.create_loss(features, mode, logits, labels)
 
         losses = get_losses()
-        loss = losses.compute_weighted_loss(
-            unweighted_loss, weights=1.0, reduction=losses.Reduction.SUM)
+        loss = losses.compute_weighted_loss(unweighted_loss, weights=1.0, reduction=losses.Reduction.SUM)
         reg_loss = losses.get_regularization_loss()
 
         training_loss = loss + reg_loss
 
-        eval_metric_ops = self._eval_metric_ops(labels, logits, pred, unweighted_loss)
+        if eval_metric_ops is None:
+            eval_metric_ops = _eval_metric_ops(labels, pred, unweighted_loss, task=self._task, name=self._name)
 
         return tf.estimator.EstimatorSpec(
             mode=mode,
@@ -117,8 +118,9 @@ class Head(_Head):
             training_chief_hooks=training_chief_hooks)
 
 
-def deepctr_model_fn(features, mode, logits, labels, task, linear_optimizer, dnn_optimizer, training_chief_hooks):
-    linear_optimizer = get_optimizer_instance(linear_optimizer, 0.005)
+def custom_estimator(features, mode, logits, labels, task, linear_optimizer, dnn_optimizer,
+                     eval_metric_ops=None, training_chief_hooks=None):
+    linear_optimizer = get_optimizer_instance(linear_optimizer, 0.005) #TODO: 外面配置的学习率失效？
     dnn_optimizer = get_optimizer_instance(dnn_optimizer, 0.01)
     train_op_fn = get_train_op_fn(linear_optimizer, dnn_optimizer)
 
@@ -127,7 +129,9 @@ def deepctr_model_fn(features, mode, logits, labels, task, linear_optimizer, dnn
                                       mode=mode,
                                       labels=labels,
                                       train_op_fn=train_op_fn,
-                                      logits=logits, training_chief_hooks=training_chief_hooks)
+                                      logits=logits,
+                                      eval_metric_ops=eval_metric_ops,
+                                      training_chief_hooks=training_chief_hooks)
 
 
 def get_train_op_fn(linear_optimizer, dnn_optimizer):
@@ -166,6 +170,7 @@ def variable_scope(name_or_scope):
         return tf.variable_scope(name_or_scope)
     except AttributeError:
         return tf.compat.v1.variable_scope(name_or_scope)
+
 
 def get_collection(key, scope=None):
     try:

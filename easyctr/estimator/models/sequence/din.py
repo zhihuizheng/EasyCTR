@@ -2,7 +2,7 @@ from collections import OrderedDict
 
 import tensorflow as tf
 from easyctr.estimator.models import BaseModel
-from easyctr.estimator.utils import deepctr_model_fn, DNN_SCOPE_NAME, variable_scope
+from easyctr.estimator.utils import custom_estimator, DNN_SCOPE_NAME, variable_scope
 # from easyctr.input_embedding import get_inputs_list, create_singlefeat_inputdict, get_embedding_vec_list
 from easyctr.layers.core import DNN, PredictionLayer
 # from easyctr.layers.sequence import AttentionSequencePoolingLayer
@@ -152,7 +152,6 @@ class DINEstimator(BaseModel):
             logits = tf.keras.layers.Dense(
                 1, use_bias=False, kernel_initializer=tf.keras.initializers.glorot_normal(seed=seed))(dnn_output)
 
-            return deepctr_model_fn(features, mode, logits, labels, task, linear_optimizer, dnn_optimizer,
-                                    training_chief_hooks=None)
+            return custom_estimator(features, mode, logits, labels, task, linear_optimizer, dnn_optimizer)
 
         self.estimator = tf.estimator.Estimator(_model_fn, model_dir=self.model_dir, params=self.kwargs)

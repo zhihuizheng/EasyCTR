@@ -52,14 +52,16 @@ class BaseModel(object):
             {k: tf.FixedLenFeature(dtype=tf.int64, shape=1) for k in self.feature_name_dict['categorical_feature_names']})
         feature_description.update(
             {k: tf.FixedLenFeature(dtype=tf.int64, shape=self.params['max_seq_len']) for k in
-             self.feature_name_dict['sequence_feature_names']})
-        feature_description[self.feature_name_dict['label_name']] = tf.FixedLenFeature(dtype=tf.float32, shape=1)
+             self.feature_name_dict['sequence_feature_names']}) #TODO: 使用tf.VarLenFeature
+        #feature_description[self.feature_name_dict['label_name']] = tf.FixedLenFeature(dtype=tf.float32, shape=1)
+        feature_description.update(
+            {k: tf.FixedLenFeature(dtype=tf.float32, shape=1) for k in self.feature_name_dict['label_names']})
 
         self.train_input = inputs.input_fn_tfrecord(self.train_data, feature_description,
-                                                    self.feature_name_dict['label_name'],
+                                                    self.feature_name_dict['label_names'],
                                                     batch_size=self.batch_size, num_epochs=1, shuffle_factor=10)
         self.eval_input = inputs.input_fn_tfrecord(self.valid_data, feature_description,
-                                                   self.feature_name_dict['label_name'],
+                                                   self.feature_name_dict['label_names'],
                                                    batch_size=2 ** 14, num_epochs=1, shuffle_factor=0)
 
     def _build_model(self):

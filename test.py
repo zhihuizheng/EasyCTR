@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+import yaml
 
 
 # data_path = 'data/criteo_x1/train_sample.csv'
@@ -43,4 +44,12 @@ import tensorflow as tf
 # nums = [1,2,3]
 # xx = tf.train.Feature(int64_list=tf.train.Int64List(value=nums))
 # print(xx)
+
+
+with open("config/esmm_synthetic.yaml", 'r') as cfg:
+    config_dict = yaml.load(cfg, Loader=yaml.FullLoader)
+
+print(config_dict)
+
+
 

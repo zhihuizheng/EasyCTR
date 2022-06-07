@@ -79,7 +79,7 @@ class FeatureEncoder(object):
         self.pickle_file = os.path.join(self.data_dir, "feature_encoder.pkl")
         self.json_file = os.path.join(self.data_dir, "feature_map.json")
         self.feature_cols = self._complete_feature_cols(feature_cols)
-        self.label_col = label_col
+        self.label_cols = self._complete_label_cols(label_col) #label_col
         self.feature_map = FeatureMap(dataset_id, self.data_dir)
         self.encoders = dict()
 
@@ -96,9 +96,21 @@ class FeatureEncoder(object):
                 full_feature_cols.append(col)
         return full_feature_cols
 
+    def _complete_label_cols(self, label_col):
+        full_label_cols = []
+        name_or_namelist = label_col["name"]
+        if isinstance(name_or_namelist, list):
+            for _name in name_or_namelist:
+                _col = label_col.copy()
+                _col["name"] = _name
+                full_label_cols.append(_col)
+        else:
+            full_label_cols.append(label_col)
+        return full_label_cols
+
     def read_csv(self, data_path):
         logging.info("Reading file: " + data_path)
-        all_cols = self.feature_cols + [self.label_col]
+        all_cols = self.feature_cols + self.label_cols
         dtype_dict = dict((x["name"], eval(x["dtype"]) if isinstance(x["dtype"], str) else x["dtype"]) 
                           for x in all_cols)
         ddf = pd.read_csv(data_path, dtype=dtype_dict, memory_map=True)
@@ -106,7 +118,7 @@ class FeatureEncoder(object):
 
     def preprocess(self, ddf, fill_na=True):
         logging.info("Preprocess feature columns...")
-        all_cols = [self.label_col] + self.feature_cols[::-1]
+        all_cols = self.label_cols + self.feature_cols[::-1]
         for col in all_cols:
             name = col["name"]
             if fill_na and name in ddf.columns and ddf[name].isnull().values.any():
@@ -114,7 +126,7 @@ class FeatureEncoder(object):
             if "preprocess" in col and col["preprocess"] != "":
                 preprocess_fn = getattr(self, col["preprocess"])
                 ddf[name] = preprocess_fn(ddf, name)
-        active_cols = [self.label_col["name"]] + [col["name"] for col in self.feature_cols if col["active"]]
+        active_cols = [col["name"] for col in self.label_cols] + [col["name"] for col in self.feature_cols if col["active"]]
         ddf = ddf.loc[:, active_cols]
         return ddf
 
@@ -306,11 +318,12 @@ class FeatureEncoder(object):
             elif feature_type == "sequence":
                 encoder = self.encoders.get(feature.lstrip("hist_") + "_labelencoder")
                 if encoder:
-                    # 每一行是一个字符串，而且分割后的长度也不一样
-                    ddf.loc[:, feature] = [concat(encoder.transform(padding(value.split('-')))) for value in ddf.loc[:, feature].values]
-        label_name = self.label_col["name"]
-        if ddf[label_name].dtype != np.float64:
-            ddf.loc[:, label_name] = ddf.loc[:, label_name].apply(lambda x: float(x))
+                    ddf.loc[:, feature] = [concat(encoder.transform(padding(value.split('-')))) for value in
+                                           ddf.loc[:, feature].values]
+        for label_col in self.label_cols:
+            label_name = label_col["name"]
+            if ddf[label_name].dtype != np.float64:
+                ddf.loc[:, label_name] = ddf.loc[:, label_name].apply(lambda x: float(x))
         return ddf
 
     def load_pickle(self, pickle_file=None):
@@ -337,7 +350,7 @@ class FeatureEncoder(object):
         numeric_feature_names = []
         categorical_feature_names = []
         sequence_feature_names = []
-        label_name = self.label_col['name']
+        label_names = [label_col['name'] for label_col in self.label_cols]
         for feature, feature_spec in self.feature_map.feature_specs.items():
             if feature_spec['type'] == 'numeric':
                 numeric_feature_names.append(feature)
@@ -349,7 +362,7 @@ class FeatureEncoder(object):
             'numeric_feature_names': numeric_feature_names,
             'categorical_feature_names': categorical_feature_names,
             'sequence_feature_names': sequence_feature_names,
-            'label_name': label_name
+            'label_names': label_names
         }
 
     def get_vocab_size(self, feature_name):

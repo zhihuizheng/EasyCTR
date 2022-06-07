@@ -107,8 +107,11 @@ def make_example(line, feature_name_dict):
     features.update(
         {feat: tf.train.Feature(int64_list=tf.train.Int64List(value=map(int, line[1][feat].split(',')))) for feat in #TODO: 加一个sequence特征的encode和decode
          feature_name_dict['sequence_feature_names']})
-    features[feature_name_dict['label_name']] = tf.train.Feature(
-        float_list=tf.train.FloatList(value=[line[1][feature_name_dict['label_name']]]))
+    #features[feature_name_dict['label_name']] = tf.train.Feature(
+    #    float_list=tf.train.FloatList(value=[line[1][feature_name_dict['label_name']]]))
+    features.update(
+        {feat: tf.train.Feature(float_list=tf.train.FloatList(value=[line[1][feat]])) for feat in
+         feature_name_dict['label_names']})
     return tf.train.Example(features=tf.train.Features(feature=features))
 
 

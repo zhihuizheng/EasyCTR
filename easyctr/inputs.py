@@ -1,16 +1,20 @@
 import tensorflow as tf
 
 
-def input_fn_tfrecord(filenames, feature_description, label=None, batch_size=256, num_epochs=1, num_parallel_calls=8,
+def input_fn_tfrecord(filenames, feature_description, label_names=None, batch_size=256, num_epochs=1, num_parallel_calls=8,
                       shuffle_factor=10, prefetch_factor=1):
     def _parse_examples(serial_exmp):
         try:
             features = tf.parse_single_example(serial_exmp, features=feature_description)
         except AttributeError:
             features = tf.io.parse_single_example(serial_exmp, features=feature_description)
-        if label is not None:
-            labels = features.pop(label)
-            return features, labels
+        if label_names is not None:
+            if len(label_names) == 1:
+                labels = features.pop(label_names[0])
+                return features, labels
+            else:
+                labels = {label: features.pop(label) for label in label_names}
+                return features, labels
         return features
 
     def input_fn():

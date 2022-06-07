@@ -3,7 +3,7 @@ import tensorflow as tf
 from tensorflow.estimator import RunConfig
 
 from ..feature_column import get_linear_logit, input_from_feature_columns
-from ..utils import deepctr_model_fn, LINEAR_SCOPE_NAME, DNN_SCOPE_NAME
+from ..utils import custom_estimator, LINEAR_SCOPE_NAME, DNN_SCOPE_NAME
 from ...layers.core import DNN
 from ...layers.interaction import FM, InteractingLayer
 from ...layers.utils import add_func, concat_func, combined_dnn_input
@@ -75,6 +75,5 @@ class AutoIntEstimator(BaseModel):
 
             logits = add_func([dnn_logit, linear_logit])
 
-            return deepctr_model_fn(features, mode, logits, labels, task, linear_optimizer, dnn_optimizer,
-                                    training_chief_hooks=None)
+            return custom_estimator(features, mode, logits, labels, task, linear_optimizer, dnn_optimizer)
         self.estimator = tf.estimator.Estimator(_model_fn, model_dir=self.model_dir, params=self.kwargs)
