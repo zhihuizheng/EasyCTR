@@ -1,0 +1,53 @@
+data:
+    data_root: ./data/
+    data_format: csv
+    train_data: ./data/multitask_x1/synthetic.csv
+    valid_data: ./data/multitask_x1/synthetic.csv
+    test_data: ./data/multitask_x1/synthetic.csv
+    min_categr_count: 2
+    feature_cols:
+        - { name: [ price ],
+            active: True, dtype: float, type: numeric, na_value: 0 }
+        - { name: [ userid, adgroup_id, pid, cms_segid, cms_group_id, final_gender_code, age_level, pvalue_level, shopping_level, occupation, new_user_class_level, campaign_id, customer, cate_id, brand ],
+            active: True, dtype: str, type: categorical, na_value: "" }
+    label_col: { name: [ clk, conv ], dtype: float }
+
+model:
+    model_root: './checkpoints/'
+    log_root: './logs/'
+    dataset_id: multitask_x1
+    workers: 8
+    verbose: 1
+    patience: 2
+    pickle_feature_encoder: True
+    debug: False
+    model: PLEEstimator
+    #loss: 'binary_crossentropy'
+    metrics: ['logloss', 'AUC']
+    task: binary
+    linear_optimizer: Ftrl
+    dnn_optimizer: Adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    l2_reg_embedding: 0.2
+    batch_size: 128
+    embedding_dim: 16
+    hidden_units: [64, 32]
+    hidden_activations: relu
+    l2_reg_dnn: 0.2
+    embedding_dropout: 0
+    net_dropout: 0
+    batch_norm: False
+    epochs: 3
+    shuffle: True
+    seed: 2022
+    expert_dnn_hidden_units: [64, 32]
+    gate_dnn_hidden_units: [32, 16]
+    tower_dnn_hidden_units: [32, 16]
+    num_tasks: 2
+    task_names: ['clk', 'conv'] #和label_col下面的names一样
+    task_types: ['binary', 'binary']
+    num_levels: 2
+    shared_expert_num: 2
+    specific_expert_num: 1

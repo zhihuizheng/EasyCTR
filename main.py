@@ -11,7 +11,7 @@ from easyctr.estimator import models
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, default='./config/star_synthetic.yaml', help='The config file.')
+    parser.add_argument('--config', type=str, default='./config/ple_synthetic.yaml', help='The config file.')
 
     args = vars(parser.parse_args())
     params = load_config(args['config'])

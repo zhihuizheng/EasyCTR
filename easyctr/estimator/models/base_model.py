@@ -53,7 +53,6 @@ class BaseModel(object):
         feature_description.update(
             {k: tf.FixedLenFeature(dtype=tf.int64, shape=self.params['max_seq_len']) for k in
              self.feature_name_dict['sequence_feature_names']}) #TODO: 使用tf.VarLenFeature
-        #feature_description[self.feature_name_dict['label_name']] = tf.FixedLenFeature(dtype=tf.float32, shape=1)
         feature_description.update(
             {k: tf.FixedLenFeature(dtype=tf.float32, shape=1) for k in self.feature_name_dict['label_names']})
 
