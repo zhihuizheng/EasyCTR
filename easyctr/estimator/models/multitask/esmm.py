@@ -24,7 +24,7 @@ class ESMMEstimator(BaseModel):
                                       kernel_initializer=tf.glorot_uniform_initializer())
             return net
 
-        def esmm_model_fn(features, labels, mode, params):
+        def model_fn(features, labels, mode, params):
             task = params['task']
             l2_reg_embedding = params['l2_reg_embedding']
 
@@ -57,7 +57,7 @@ class ESMMEstimator(BaseModel):
                     # 'conversion_label': conversion_label
                 }
                 export_outputs = {
-                    'pred': tf.estimator.export.PredictOutput(predictions['cvr_preds'])  # 线上预测需要的
+                    'preds': tf.estimator.export.PredictOutput(predictions['cvr_preds'])  # 线上预测需要的
                 }
                 return tf.estimator.EstimatorSpec(mode, predictions=predictions, export_outputs=export_outputs)
 
@@ -75,4 +75,4 @@ class ESMMEstimator(BaseModel):
 
                 return tf.estimator.EstimatorSpec(mode, loss=loss, train_op=train_op, eval_metric_ops=eval_metric_ops)
 
-        self.estimator = tf.estimator.Estimator(esmm_model_fn, model_dir=self.model_dir, params=self.kwargs)
+        self.estimator = tf.estimator.Estimator(model_fn, model_dir=self.model_dir, params=self.kwargs)

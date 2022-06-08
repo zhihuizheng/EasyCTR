@@ -17,7 +17,7 @@ class MMoEEstimator(BaseModel):
     def _build_model(self):
         feature_columns = self.numeric_feature_columns + self.categorical_feature_columns
 
-        def esmm_model_fn(features, labels, mode, params):
+        def model_fn(features, labels, mode, params):
             seed = params['seed']
             l2_reg_embedding = params['l2_reg_embedding']
             dnn_activation = params['hidden_activations']
@@ -99,4 +99,4 @@ class MMoEEstimator(BaseModel):
 
                 return tf.estimator.EstimatorSpec(mode, loss=loss, train_op=train_op, eval_metric_ops=eval_metric_ops)
 
-        self.estimator = tf.estimator.Estimator(esmm_model_fn, model_dir=self.model_dir, params=self.kwargs)
+        self.estimator = tf.estimator.Estimator(model_fn, model_dir=self.model_dir, params=self.kwargs)

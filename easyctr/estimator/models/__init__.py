@@ -5,3 +5,4 @@ from .autoint import AutoIntEstimator
 from .sequence.din import DINEstimator
 from .multitask.esmm import ESMMEstimator
 from .multitask.mmoe import MMoEEstimator
+from .multidomain.star import STAREstimator
