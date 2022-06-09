@@ -55,7 +55,7 @@ def sampled(source_dir):
     return {
         'user': user_sub,
         'ad': ad,
-        'sample': sample_sub,
+        'examples': sample_sub,
         'behavior_log': behavior_log
     }
 
@@ -129,7 +129,7 @@ def gen_sess_feature_din(row, user_hist_session, max_seq_len):
 
 def gen_din_input(sampled_dict, max_seq_len):
     user_hist_session = sampled_dict['user_hist_session']
-    sample_sub = sampled_dict['sample']
+    sample_sub = sampled_dict['examples']
 
     sess_input_dict = {'cate_id': [], 'brand': []}
     sess_input_length = []
@@ -146,7 +146,7 @@ def gen_din_input(sampled_dict, max_seq_len):
     user = user.fillna(-1)
     user.rename(columns={'new_user_class_level ': 'new_user_class_level'}, inplace=True)
 
-    sample_sub = sampled_dict['sample']
+    sample_sub = sampled_dict['examples']
     sample_sub.rename(columns={'user': 'userid'}, inplace=True)
 
     data = pd.merge(sample_sub, user, how='left', on='userid')

@@ -3,6 +3,7 @@ from .wdl import WDLEstimator
 from .deepfm import DeepFMEstimator
 from .autoint import AutoIntEstimator
 from .sequence.din import DINEstimator
+from .sequence.bst import BSTEstimator
 from .multitask.esmm import ESMMEstimator
 from .multitask.mmoe import MMoEEstimator
 from .multitask.ple import PLEEstimator

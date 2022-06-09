@@ -42,7 +42,7 @@ def input_fn(features, labels, training=True, batch_size=256, num_epochs=5):
 
 
 if __name__ == "__main__":
-    df = pd.read_csv("data/criteo_x1/train_sample.csv")
+    df = pd.read_csv("../data/criteo_x1/train_sample.csv")
 
     df = df[0:600000]
     df = shuffle(df)
