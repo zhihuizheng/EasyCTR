@@ -2,7 +2,6 @@ import os
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 import argparse
 import logging
-import os
 from easyctr import datasets
 from easyctr.utils import load_config, set_logger, set_checkpoints, print_to_json
 from easyctr.features import FeatureEncoder
@@ -11,7 +10,7 @@ from easyctr.estimator import models
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, default='./config/bst_alidisplay.yaml', help='The config file.')
+    parser.add_argument('--config', type=str, default='./config/din_alidisplay.yaml', help='The config file.')
 
     args = vars(parser.parse_args())
     params = load_config(args['config'])
@@ -19,7 +18,7 @@ if __name__ == "__main__":
     set_checkpoints(params)
     logging.info(print_to_json(params))
 
-    # preporcess the datasets
+    # preprocess the datasets
     dataset = params['dataset_id'].split('_')[0].lower()
     data_dir = os.path.join(params['data_root'], params['dataset_id'])
     if params.get("data_format") == 'csv':  # load data from csv
@@ -35,7 +34,6 @@ if __name__ == "__main__":
         params["train_data"] = os.path.join(data_dir, 'train.tfrecords')
         params["valid_data"] = os.path.join(data_dir, 'valid.tfrecords')
         params["test_data"] = os.path.join(data_dir, 'test.tfrecords')
-        #feature_map = feature_encoder.feature_map
     else:
         raise Exception("unsupport data format: {}.".format(params.get("data_format")))
 

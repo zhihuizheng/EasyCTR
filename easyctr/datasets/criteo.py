@@ -1,8 +1,5 @@
-import pandas as pd
 import numpy as np
-import os
 from ..features import FeatureEncoder as BaseFeatureEncoder
-from datetime import datetime, date
 
 
 class FeatureEncoder(BaseFeatureEncoder):
@@ -14,4 +11,3 @@ class FeatureEncoder(BaseFeatureEncoder):
                 value = int(value)
             return value
         return df[col_name].map(_convert_to_bucket).astype(int)
-

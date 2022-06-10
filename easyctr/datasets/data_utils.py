@@ -45,11 +45,9 @@ def build_dataset(feature_encoder, train_data=None, valid_data=None, test_data=N
     # fit and transform train_ddf
     train_ddf = feature_encoder.preprocess(train_ddf)
     feature_encoder.fit(train_ddf, **kwargs)
+    #feature_name_dict = feature_encoder.get_feature_name_dict()   ######TODO: 这一行修改
+
     train_ddf = feature_encoder.transform(train_ddf)
-
-    feature_name_dict = feature_encoder.get_feature_name_dict()
-
-
     # block_size = int(kwargs.get("data_block_size", 0))
     # if block_size > 0:
     #     block_id = 0

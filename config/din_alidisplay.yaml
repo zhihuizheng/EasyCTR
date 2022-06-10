@@ -11,7 +11,7 @@ data:
         - { name: [ userid, adgroup_id, pid, cms_segid, cms_group_id, final_gender_code, age_level, pvalue_level, shopping_level, occupation, new_user_class_level, campaign_id, customer, cate_id, brand ],
             active: True, dtype: str, type: categorical, na_value: "" }
         - { name: [ hist_cate_id, hist_brand ],
-            active: True, dtype: str, type: sequence, na_value: "" } #序列特征通过在前面加hist_前缀来标识
+            active: True, dtype: str, type: sequence, na_value: "", separator: "-", max_seq_len: 10, padding: "pre" } #序列特征通过在前面加hist_前缀来标识
     label_col: { name: clk, dtype: float }
 
 model:
@@ -45,4 +45,4 @@ model:
     shuffle: True
     seed: 2022
     init_std: 0.01
-    max_seq_len: 10
+    #max_seq_len: 10

@@ -22,25 +22,18 @@ class FeatureMap(object):
         logging.info("Set feature index...")
         idx = 0
         for feature, feature_spec in self.feature_specs.items():
-            # if feature_spec["type"] != "sequence":
-            #     self.feature_specs[feature]["index"] = idx
-            #     idx += 1
-            # else:
-            #     seq_indexes = [i + idx for i in range(feature_spec["max_len"])]
-            #     self.feature_specs[feature]["index"] = seq_indexes
-            #     idx += feature_spec["max_len"]
             self.feature_specs[feature]["index"] = idx
             idx += 1
         self.input_length = idx
 
-    # def get_feature_index(self, feature_type=None):
-    #     feature_indexes = []
-    #     if feature_type is not None:
-    #         if not isinstance(feature_type, list):
-    #             feature_type = [feature_type]
-    #         feature_indexes = [feature_spec["index"] for feature, feature_spec in self.feature_specs.items()
-    #                            if feature_spec["type"] in feature_type]
-    #     return feature_indexes
+    def get_feature_index(self, feature_type=None):
+        feature_indexes = []
+        if feature_type is not None:
+            if not isinstance(feature_type, list):
+                feature_type = [feature_type]
+            feature_indexes = [feature_spec["index"] for feature, feature_spec in self.feature_specs.items()
+                               if feature_spec["type"] in feature_type]
+        return feature_indexes
 
     def load(self, json_file):
         logging.info("Load feature_map from json: " + json_file)
@@ -79,7 +72,7 @@ class FeatureEncoder(object):
         self.pickle_file = os.path.join(self.data_dir, "feature_encoder.pkl")
         self.json_file = os.path.join(self.data_dir, "feature_map.json")
         self.feature_cols = self._complete_feature_cols(feature_cols)
-        self.label_cols = self._complete_label_cols(label_col) #label_col
+        self.label_cols = self._complete_label_cols(label_col)
         self.feature_map = FeatureMap(dataset_id, self.data_dir)
         self.encoders = dict()
 
@@ -184,7 +177,16 @@ class FeatureEncoder(object):
                 self.feature_map.num_features += len(labelencoder.classes_)
                 self.feature_map.feature_specs[name]["vocab_size"] = len(labelencoder.classes_)
         elif feature_type == "sequence":
-            pass # 啥也不需要做
+            cname = name.lstrip('hist_') # 表示由哪个离散特征构成的序列
+            separator = feature_column.get("separator", "-")
+            na_value = feature_column.get("na_value", "")
+            max_seq_len = feature_column.get("max_seq_len", 10)
+            padding = feature_column.get("padding", "post")
+            self.feature_map.feature_specs[name]["cname"] = cname
+            self.feature_map.feature_specs[name]["separator"] = separator
+            self.feature_map.feature_specs[name]["na_value"] = na_value
+            self.feature_map.feature_specs[name]["max_seq_len"] = max_seq_len
+            self.feature_map.feature_specs[name]["padding"] = padding
         else:
             raise NotImplementedError("feature_col={}".format(feature_column))
         
@@ -286,21 +288,17 @@ class FeatureEncoder(object):
     #         raise NotImplementedError("feature_col={}".format(feature_column))
 
     def transform(self, ddf):
-        # TODO: 放到另外的模块，并且读入参数max_seq_len
-        # def padding(nums, max_seq_len=10):
-        #     if len(nums) < max_seq_len:
-        #         nums = nums + [0] * (max_seq_len - len(nums))
-        #     return nums
-        def padding(array, elm='Unknown', max_seq_len=10):
-            # 在前面pad，这样就算不屏蔽0也可以
-            if len(array) < max_seq_len:
-                array = [elm] * (max_seq_len - len(array)) + array
-            else:
-                array = array[-max_seq_len:]
-            return array
 
-        def concat(nums, sep='-'):
-            return sep.join(map(str, nums))
+        def pad(inputs, default='Unknown', max_seq_len=10, padding='post'):
+            # 在前面pad，这样就算不屏蔽0也可以
+            if len(inputs) < max_seq_len:
+                inputs = [default] * (max_seq_len - len(inputs)) + inputs
+            else:
+                inputs = inputs[-max_seq_len:]
+            return inputs
+
+        def concat(inputs, sep='-'):
+            return sep.join(map(str, inputs))
 
         logging.info("Transform feature columns...")
         for feature, feature_spec in self.feature_map.feature_specs.items():
@@ -316,10 +314,13 @@ class FeatureEncoder(object):
                 if encoder:
                     ddf.loc[:, feature] = encoder.transform(ddf.loc[:, feature].values)
             elif feature_type == "sequence":
-                encoder = self.encoders.get(feature.lstrip("hist_") + "_labelencoder")
+                encoder = self.encoders.get(feature_spec['cname'] + "_labelencoder")
+                separator = feature_spec['separator']
+                max_seq_len = feature_spec['max_seq_len']
+                padding = feature_spec['padding']
                 if encoder:
-                    ddf.loc[:, feature] = [concat(encoder.transform(padding(value.split('-')))) for value in
-                                           ddf.loc[:, feature].values]
+                    ddf.loc[:, feature] = [concat(encoder.transform(pad(value.split(separator), max_seq_len=max_seq_len, padding=padding)))
+                                           for value in ddf.loc[:, feature].values]
         for label_col in self.label_cols:
             label_name = label_col["name"]
             if ddf[label_name].dtype != np.float64:
@@ -346,29 +347,30 @@ class FeatureEncoder(object):
     def load_json(self, json_file):
         self.feature_map.load(json_file)
 
-    def get_feature_name_dict(self):
-        numeric_feature_names = []
-        categorical_feature_names = []
-        sequence_feature_names = []
-        label_names = [label_col['name'] for label_col in self.label_cols]
-        for feature, feature_spec in self.feature_map.feature_specs.items():
-            if feature_spec['type'] == 'numeric':
-                numeric_feature_names.append(feature)
-            elif feature_spec['type'] == 'categorical':
-                categorical_feature_names.append(feature)
-            elif feature_spec['type'] == 'sequence':
-                sequence_feature_names.append(feature)
-        return {
-            'numeric_feature_names': numeric_feature_names,
-            'categorical_feature_names': categorical_feature_names,
-            'sequence_feature_names': sequence_feature_names,
-            'label_names': label_names
-        }
-
-    def get_vocab_size(self, feature_name):
-        feature_spec = self.feature_map.feature_specs.get(feature_name, None)
-        if not feature_spec:
-            raise RuntimeError("unknown feature name={}!".format(feature_name))
-        if feature_spec["type"] != "categorical":
-            raise RuntimeError("feature type={} does not have vocab size!".format(feature_spec["type"]))
-        return feature_spec["vocab_size"]
+    # # TODO: 换一个函数形式
+    # def get_feature_name_dict(self):
+    #     numeric_feature_names = []
+    #     categorical_feature_names = []
+    #     sequence_feature_names = []
+    #     label_names = [label_col['name'] for label_col in self.label_cols]
+    #     for feature, feature_spec in self.feature_map.feature_specs.items():
+    #         if feature_spec['type'] == 'numeric':
+    #             numeric_feature_names.append(feature)
+    #         elif feature_spec['type'] == 'categorical':
+    #             categorical_feature_names.append(feature)
+    #         elif feature_spec['type'] == 'sequence':
+    #             sequence_feature_names.append(feature)
+    #     return {
+    #         'numeric_feature_names': numeric_feature_names,
+    #         'categorical_feature_names': categorical_feature_names,
+    #         'sequence_feature_names': sequence_feature_names,
+    #         'label_names': label_names
+    #     }
+    #
+    # def get_vocab_size(self, feature_name):
+    #     feature_spec = self.feature_map.feature_specs.get(feature_name, None)
+    #     if not feature_spec:
+    #         raise RuntimeError("unknown feature name={}!".format(feature_name))
+    #     if feature_spec["type"] != "categorical":
+    #         raise RuntimeError("feature type={} does not have vocab size!".format(feature_spec["type"]))
+    #     return feature_spec["vocab_size"]
