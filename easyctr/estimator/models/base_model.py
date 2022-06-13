@@ -85,8 +85,8 @@ class BaseModel(object):
             elif feature_spec['type'] == 'sequence':
                 # TODO: 使用tf.VarLenFeature
                 feature_description[feature] = tf.FixedLenFeature(dtype=tf.int64, shape=feature_spec['max_seq_len'])
-        for feature in label_names:
-            feature_description[feature] = tf.FixedLenFeature(dtype=tf.float32, shape=1)
+        for label_name in label_names:
+            feature_description[label_name] = tf.FixedLenFeature(dtype=tf.float32, shape=1)
 
         self.train_input = inputs.input_fn_tfrecord(self.train_data, feature_description, label_names,
                                                     batch_size=self.batch_size, num_epochs=1, shuffle_factor=10)

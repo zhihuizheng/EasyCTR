@@ -45,6 +45,8 @@ def build_dataset(feature_encoder, train_data=None, valid_data=None, test_data=N
     # fit and transform train_ddf
     train_ddf = feature_encoder.preprocess(train_ddf)
     feature_encoder.fit(train_ddf, **kwargs)
+    feature_specs = feature_encoder.feature_map.feature_specs
+    label_names = label_names = [label_col['name'] for label_col in feature_encoder.label_cols]
     #feature_name_dict = feature_encoder.get_feature_name_dict()   ######TODO: 这一行修改
 
     train_ddf = feature_encoder.transform(train_ddf)
@@ -57,7 +59,7 @@ def build_dataset(feature_encoder, train_data=None, valid_data=None, test_data=N
     # else:
     #     save_hdf5(train_array, os.path.join(feature_encoder.data_dir, 'train.h5'))
     # del train_array, train_ddf
-    write_tfrecord(os.path.join(feature_encoder.data_dir, 'train.tfrecords'), train_ddf, feature_name_dict)
+    write_tfrecord(os.path.join(feature_encoder.data_dir, 'train.tfrecords'), train_ddf, feature_specs, label_names)
     gc.collect()
 
     # Transfrom valid_ddf
@@ -72,7 +74,7 @@ def build_dataset(feature_encoder, train_data=None, valid_data=None, test_data=N
         #         block_id += 1
         # else:
         #     save_hdf5(valid_array, os.path.join(feature_encoder.data_dir, 'valid.h5'))
-        write_tfrecord(os.path.join(feature_encoder.data_dir, 'valid.tfrecords'), valid_ddf, feature_name_dict)
+        write_tfrecord(os.path.join(feature_encoder.data_dir, 'valid.tfrecords'), valid_ddf, feature_specs, label_names)
         # del valid_array, valid_ddf
         gc.collect()
 
@@ -88,32 +90,43 @@ def build_dataset(feature_encoder, train_data=None, valid_data=None, test_data=N
         #         block_id += 1
         # else:
         #     save_hdf5(test_array, os.path.join(feature_encoder.data_dir, 'test.h5'))
-        write_tfrecord(os.path.join(feature_encoder.data_dir, 'test.tfrecords'), test_ddf, feature_name_dict)
+        write_tfrecord(os.path.join(feature_encoder.data_dir, 'test.tfrecords'), test_ddf, feature_specs, label_names)
         # del test_array, test_ddf
         gc.collect()
     logging.info("Transform csv data to tfrecords done.")
 
 
-def make_example(line, feature_name_dict):
+def make_example(line, feature_specs, label_names):
+    # features = {}
+    # features.update(
+    #     {feat: tf.train.Feature(float_list=tf.train.FloatList(value=[line[1][feat]])) for feat in
+    #      feature_name_dict['numeric_feature_names']})
+    # features.update(
+    #     {feat: tf.train.Feature(int64_list=tf.train.Int64List(value=[int(line[1][feat])])) for feat in
+    #      feature_name_dict['categorical_feature_names']})
+    # features.update(
+    #     {feat: tf.train.Feature(int64_list=tf.train.Int64List(value=map(int, line[1][feat].split('-')))) for feat in #TODO: 加一个sequence特征的encode和decode
+    #      feature_name_dict['sequence_feature_names']})
+    # features.update(
+    #     {feat: tf.train.Feature(float_list=tf.train.FloatList(value=[line[1][feat]])) for feat in
+    #      feature_name_dict['label_names']})
+    # return tf.train.Example(features=tf.train.Features(feature=features))
     features = {}
-    features.update(
-        {feat: tf.train.Feature(float_list=tf.train.FloatList(value=[line[1][feat]])) for feat in
-         feature_name_dict['numeric_feature_names']})
-    features.update(
-        {feat: tf.train.Feature(int64_list=tf.train.Int64List(value=[int(line[1][feat])])) for feat in
-         feature_name_dict['categorical_feature_names']})
-    features.update(
-        {feat: tf.train.Feature(int64_list=tf.train.Int64List(value=map(int, line[1][feat].split('-')))) for feat in #TODO: 加一个sequence特征的encode和decode
-         feature_name_dict['sequence_feature_names']})
-    features.update(
-        {feat: tf.train.Feature(float_list=tf.train.FloatList(value=[line[1][feat]])) for feat in
-         feature_name_dict['label_names']})
+    for feature, feature_spec in feature_specs.items():
+        if feature_spec['type'] == 'numeric':
+            features[feature] = tf.train.Feature(float_list=tf.train.FloatList(value=[line[1][feature]]))
+        elif feature_spec['type'] == 'categorical':
+            features[feature] = tf.train.Feature(int64_list=tf.train.Int64List(value=[int(line[1][feature])]))
+        elif feature_spec['type'] == 'sequence':
+            features[feature] = tf.train.Feature(int64_list=tf.train.Int64List(value=map(int, line[1][feature].split('-'))))
+    for label_name in label_names:
+        features[label_name] = tf.train.Feature(float_list=tf.train.FloatList(value=[line[1][label_name]]))
     return tf.train.Example(features=tf.train.Features(feature=features))
 
 
-def write_tfrecord(filename, df, feature_name_dict):
+def write_tfrecord(filename, df, feature_specs, label_names):
     writer = tf.python_io.TFRecordWriter(filename)
     for line in df.iterrows():
-        ex = make_example(line, feature_name_dict)
+        ex = make_example(line, feature_specs, label_names)
         writer.write(ex.SerializeToString())
     writer.close()

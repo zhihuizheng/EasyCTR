@@ -57,16 +57,3 @@ def print_to_json(data, sort_keys=True):
 
 def print_to_list(data):
     return ' - '.join('{}: {:.6f}'.format(k, v) for k, v in data.items())
-
-
-# class Monitor(object):
-#     def __init__(self, kv):
-#         if isinstance(kv, str):
-#             kv = {kv: 1}
-#         self.kv_pairs = kv
-#
-#     def get_value(self, logs):
-#         value = 0
-#         for k, v in self.kv_pairs.items():
-#             value += logs.get(k, 0) * v
-#         return value
